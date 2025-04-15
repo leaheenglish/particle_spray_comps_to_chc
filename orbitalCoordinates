@@ -1,0 +1,52 @@
+import numpy as np
+import gala.coordinates as gc
+import astropy.coordinates as coord
+_ = coord.galactocentric_frame_defaults.set('v4.0')
+
+def orbpole(x,y,z,vx,vy,vz):
+    # r x v in cartesian coordinates!
+    pos=np.concatenate((np.reshape(x, (x.size,1)),np.reshape(y, (y.size,1)),np.reshape(z, (z.size,1))), axis = 1)
+    vel=np.concatenate((np.reshape(vx, (vx.size,1)),np.reshape(vy, (vy.size,1)),np.reshape(vz, (vz.size,1))), axis = 1)
+    uu = np.cross(pos, vel, axis = 1)
+    # |r.v|
+    uumag = np.linalg.norm(uu, axis = 1)
+    u = uu.T/uumag
+    #print(pos.shape,vel.shape,uu.shape,uumag.shape, u.shape)
+    
+    return u
+
+# calculating orbital coordinates
+
+xs = stream.pos.x.value
+ys = stream.pos.y.value
+zs = stream.pos.z.value
+vxs = stream.vel.d_x.value
+vys = stream.vel.d_y.value
+vzs = stream.vel.d_z.value
+
+orbital_pole = orbpole(xs,ys,zs,vxs,vys,vzs)
+px = orbital_pole[0,:]
+py = orbital_pole[1,:]
+pz = orbital_pole[2,:]
+px_op = np.median(px)
+py_op = np.median(py)
+pz_op = np.median(pz)
+pxy_op = np.sqrt(px_op**2 + py_op**2)
+if py_op >= 0: 
+    angle1 = np.arccos(px_op/pxy_op)
+else: 
+    angle1 = 2*np.pi - np.arccos(px_op/pxy_op)
+angle2 = np.arccos(pz_op)
+eulerM = np.matrix([[np.cos(angle1)*np.cos(angle2), -np.sin(angle1), np.sin(angle2)*np.cos(angle1)], 
+            [np.cos(angle2)*np.sin(angle1), np.cos(angle1), np.sin(angle1)*np.sin(angle2)], 
+            [-np.sin(angle2), 0.0, np.cos(angle2)]])
+xx, xy, xz = np.asarray(np.dot(np.matrix([1,0,0]), eulerM.T))[0][:]
+pole = coord.representation.CartesianRepresentation(px_op*u.kpc, py_op*u.kpc, pz_op*u.kpc)
+xnew = coord.representation.CartesianRepresentation(xx*u.kpc, xy*u.kpc, xz*u.kpc)
+frame = gc.GreatCircleICRSFrame.from_xyz(znew = pole, xnew = xnew)
+skycoord = coord.SkyCoord(x=xsFar*u.kpc, y=ysFar*u.kpc,z=zsFar*u.kpc, representation_type='cartesian')
+coord_new = skycoord.transform_to(frame)
+phi1 = coord_new.phi1.to(u.deg).value - np.median(coord_new.phi1.to(u.deg).value)
+phi1[phi1Far < -180] += 360
+phi1[phi1Far > 180] -= 360
+phi2 = coord_new.phi2.to(u.deg).value
